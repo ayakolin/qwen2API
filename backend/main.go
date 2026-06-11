@@ -7726,15 +7726,9 @@ type TokenVerifyResult struct {
 func NewQwenClient(pool *AccountPool, settings Settings, logger *slog.Logger) *QwenClient {
 	return &QwenClient{
 		pool: pool, settings: settings, logger: logger,
-		http: &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment, MaxIdleConns: 100, MaxIdleConnsPerHost: 20,
-				IdleConnTimeout:       30 * time.Second,
-				ResponseHeaderTimeout: streamTimeoutDuration(settings.UpstreamStreamHeaderTimeoutSeconds),
-				ForceAttemptHTTP2:     true,
-			},
-			Timeout: 5 * time.Minute,
-		},
+		// Use a Chrome-fingerprinted (uTLS) HTTP/2 client so Aliyun WAF does not
+		// flag the TLS ClientHello as a bot and serve a JS challenge page.
+		http:    newBrowserHTTPClient(streamTimeoutDuration(settings.UpstreamStreamHeaderTimeoutSeconds)),
 		deleted: map[string]bool{},
 	}
 }
