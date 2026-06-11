@@ -69,7 +69,7 @@ func BuildChatPayload(chatID, model, content string, hasCustomTools bool, files 
 		}
 		featureConfig = map[string]any{
 			"thinking_enabled": thinking, "output_schema": "phase", "research_mode": "normal",
-			"auto_thinking": autoThinking, "thinking_mode": thinkingMode, "thinking_format": "summary",
+			"auto_thinking": autoThinking, "thinking_mode": thinkingMode, "thinking_format": "detailed",
 			"auto_search": enableSearch || chatType == "deep_research", "code_interpreter": false,
 			"plugins_enabled": false, "function_calling": false, "enable_tools": false,
 			"enable_function_call": false, "tool_choice": "none",

@@ -7631,18 +7631,67 @@ type QwenClient struct {
 }
 
 type UpstreamEvent struct {
-	Type          string         `json:"type"`
-	Phase         string         `json:"phase"`
-	Content       string         `json:"content"`
-	ReasoningText string         `json:"reasoning_text,omitempty"`
-	Status        string         `json:"status,omitempty"`
-	Extra         map[string]any `json:"extra,omitempty"`
-	Raw           map[string]any `json:"raw,omitempty"`
+	Type              string         `json:"type"`
+	Phase             string         `json:"phase"`
+	Content           string         `json:"content"`
+	ReasoningText     string         `json:"reasoning_text,omitempty"`
+	Status            string         `json:"status,omitempty"`
+	ContentIsSnapshot bool           `json:"-"`
+	Extra             map[string]any `json:"extra,omitempty"`
+	Raw               map[string]any `json:"raw,omitempty"`
 }
 
 type streamLineRead struct {
 	line string
 	err  error
+}
+
+// streamSnapshotNormalizer converts cumulative reasoning snapshots back into
+// incremental deltas. Qwen emits summary thoughts as the full text-so-far on
+// every event; replaying that verbatim duplicates the reasoning, so we track the
+// last snapshot per stream and forward only the newly appended suffix. The
+// accumulated snapshot resets once the stream advances to answer/tool_call.
+type streamSnapshotNormalizer struct {
+	previous string
+}
+
+func (n *streamSnapshotNormalizer) normalize(evt UpstreamEvent) UpstreamEvent {
+	if evt.Type != "delta" {
+		return evt
+	}
+	if evt.Phase != "think" && evt.Phase != "thinking_summary" {
+		if n.previous != "" && (evt.Phase == "answer" || evt.Phase == "tool_call") {
+			n.previous = ""
+		}
+		return evt
+	}
+	if evt.Status == "finished" && evt.Content == "" {
+		n.previous = ""
+		return evt
+	}
+	if !evt.ContentIsSnapshot || evt.Content == "" {
+		return evt
+	}
+	suffix := evt.Content[commonPrefixLen(n.previous, evt.Content):]
+	n.previous = evt.Content
+	evt.Content = suffix
+	if evt.ReasoningText != "" {
+		evt.ReasoningText = suffix
+	}
+	evt.ContentIsSnapshot = false
+	return evt
+}
+
+func commonPrefixLen(left, right string) int {
+	limit := len(left)
+	if len(right) < limit {
+		limit = len(right)
+	}
+	index := 0
+	for index < limit && left[index] == right[index] {
+		index++
+	}
+	return index
 }
 
 func streamTimeoutDuration(seconds int) time.Duration {
@@ -7859,6 +7908,7 @@ func (c *QwenClient) StreamChat(ctx context.Context, token, chatID string, paylo
 	firstEventLogged := false
 	rawTail := ""
 	totalBytes := 0
+	var snapshotNormalizer streamSnapshotNormalizer
 	var firstEventTimer *time.Timer
 	var firstEventCh <-chan time.Time
 	if firstEventTimeout > 0 {
@@ -7886,6 +7936,7 @@ func (c *QwenClient) StreamChat(ctx context.Context, token, chatID string, paylo
 			return errors.New(upstreamError)
 		}
 		return parseSSEBlock(blockText, func(evt UpstreamEvent) error {
+			evt = snapshotNormalizer.normalize(evt)
 			events++
 			if !firstEventLogged {
 				firstEventLogged = true
@@ -8123,13 +8174,14 @@ func parseQwenEvent(obj map[string]any) []UpstreamEvent {
 	events := make([]UpstreamEvent, 0, len(parsed))
 	for _, evt := range parsed {
 		events = append(events, UpstreamEvent{
-			Type:          evt.Type,
-			Phase:         evt.Phase,
-			Content:       evt.Content,
-			ReasoningText: evt.ReasoningText,
-			Status:        evt.Status,
-			Extra:         evt.Extra,
-			Raw:           evt.Raw,
+			Type:              evt.Type,
+			Phase:             evt.Phase,
+			Content:           evt.Content,
+			ReasoningText:     evt.ReasoningText,
+			Status:            evt.Status,
+			ContentIsSnapshot: evt.ContentIsSnapshot,
+			Extra:             evt.Extra,
+			Raw:               evt.Raw,
 		})
 	}
 	return events

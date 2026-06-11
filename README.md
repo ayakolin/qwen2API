@@ -191,6 +191,15 @@ Do not commit real secrets. `.env.example` intentionally contains empty values a
 | `HOST_DATA_DIR`, `HOST_LOGS_DIR` | Host paths mounted into Docker as `/app/data` and `/app/logs`. Defaults are `./data` and `./logs`. |
 | `DATA_DIR`, `LOGS_DIR` | Local non-Docker path overrides. Leave empty to use the current project directory. |
 
+### 3. Fork Behavior Notes
+
+This fork keeps a few behavior tweaks on top of upstream:
+
+- Unlimited quota: set a user's `quota` to `-1` in `data/users.json` to disable the quota limit. `used_tokens` keeps accumulating but never returns a `402 Quota Exceeded`.
+- Detailed thinking: when thinking is enabled the gateway requests `thinking_format=detailed` from upstream, so the full reasoning is passed through to the compatible `reasoning`/`thinking` fields.
+- Reasoning de-duplication: cumulative thinking snapshots from upstream are normalized into incremental deltas, so reasoning text is not repeated in the stream.
+- Tool results are compacted head-and-tail (up to 8000 chars) instead of a head-only cut, preserving the trailing conclusion or error of long tool output.
+
 ## 四、开发指南 / Development Guide
 
 ### 1. Requirements

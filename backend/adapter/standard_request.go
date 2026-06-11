@@ -1717,7 +1717,24 @@ func renderToolResult(id, content string) string {
 	if strings.TrimSpace(id) != "" {
 		idPart = " id=" + strings.TrimSpace(id)
 	}
-	return "[Tool Result" + idPart + "]\n" + clipText(content, 6000) + "\n[/Tool Result]"
+	return "[Tool Result" + idPart + "]\n" + compactToolResultBody(content, 8000) + "\n[/Tool Result]"
+}
+
+// compactToolResultBody keeps the head and tail of an oversized tool result and
+// drops the middle, instead of a head-only cut. Tool output often carries its
+// conclusion or error at the end, so a plain prefix truncation can discard the
+// part the model needs most.
+func compactToolResultBody(body string, limit int) string {
+	if limit <= 0 || len(body) <= limit {
+		return body
+	}
+	head := limit * 3 / 8
+	tail := limit / 8
+	if head+tail >= len(body) {
+		return body
+	}
+	dropped := len(body) - head - tail
+	return fmt.Sprintf("%s\n...[truncated %d bytes from middle]...\n%s", body[:head], dropped, body[len(body)-tail:])
 }
 
 func extractUserTextOnly(content any) string {
