@@ -7748,6 +7748,23 @@ func qwenHeaders(token string) http.Header {
 	h.Set("sec-fetch-dest", "empty")
 	h.Set("sec-fetch-mode", "cors")
 	h.Set("sec-fetch-site", "same-origin")
+	h.Set("source", "web")
+	// 携带阿里云 WAF 期望的 ssxmod_itna/ssxmod_itna2 cookie，避免被人机验证挑战页拦截。
+	// 同时把账号 token 也放进 cookie（上游同时接受 Authorization 头与 token cookie）。
+	itna, itna2 := globalSsxmod.Get()
+	cookieParts := make([]string, 0, 3)
+	if strings.TrimSpace(token) != "" {
+		cookieParts = append(cookieParts, "token="+strings.TrimSpace(token))
+	}
+	if itna != "" {
+		cookieParts = append(cookieParts, "ssxmod_itna="+itna)
+	}
+	if itna2 != "" {
+		cookieParts = append(cookieParts, "ssxmod_itna2="+itna2)
+	}
+	if len(cookieParts) > 0 {
+		h.Set("Cookie", strings.Join(cookieParts, "; "))
+	}
 	return h
 }
 
